@@ -1,8 +1,35 @@
-import { executeLangQuery, executeMetaQuery } from "./dbService";
+import { executeLangQuery, executeMetaQuery, getLangCodeById } from "./dbService";
 
 const CJK_CHAR_RE = /[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]/g;  //匹配所有CJK字符
 const HAS_CJK_RE = /[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]/;  //检测是否含有CJK字符
 const ADVANCED_FTS_PREFIX_RE = /^fts:\s*/i;  //匹配以"fts:"开头的查询，忽略大小写
+const READABLE_LANG_SUFFIX_RE = /_(DE|EN|ES|FR|ID|IT|JP|KR|PT|RU|CHT|TH|TR|VI|CHS)$/i;
+
+const buildLocalizedFileNameCandidates = (fileName, lang) => {
+    const extMatch = fileName.match(/\.[^.]+$/);
+    const ext = extMatch ? extMatch[0] : "";
+    const stem = ext ? fileName.slice(0, -ext.length) : fileName;
+    const stemNoSuffix = stem.replace(READABLE_LANG_SUFFIX_RE, "");
+    const langCode = getLangCodeById(lang);
+    const langSuffix = typeof langCode === "string" ? langCode.toUpperCase() : null;
+    const langStem = langSuffix ? `${stemNoSuffix}_${langSuffix}` : null;
+    const candidates = [];
+    const addCandidate = (name) => {
+        if (name && !candidates.includes(name)) {
+            candidates.push(name);
+        }
+    };
+
+    // Priority: exact name -> language-adjusted suffix variant -> generic fallback names.
+    addCandidate(fileName);
+    addCandidate(stem);
+    if (langStem) addCandidate(langStem);
+    if (langStem && ext) addCandidate(`${langStem}${ext}`);
+    addCandidate(stemNoSuffix);
+    if (ext) addCandidate(`${stemNoSuffix}${ext}`);
+
+    return candidates;
+};
 
 // 在CJK字符之间添加空格，保证unicode61 tokenizer正确分词
 export const normalizeMatchKeyword = (keyword) => {
@@ -355,9 +382,23 @@ export const selectReadableMetadataFromFileNames = async (fileNames = [], langCo
 // 获取阅读物的文本内容
 export const selectReadableFromFileName = async (fileName, langs = []) => {
     if (!langs || langs.length === 0) return [];
+    if (!fileName) return [];
+
     const tasks = langs.map(async (lang) => {
-        const rows = await executeLangQuery(lang, "select content from readable where fileName=?", [fileName]);
-        return rows.map((row) => ({ content: row.content, lang }));
+        const candidates = buildLocalizedFileNameCandidates(fileName, lang);
+
+        const placeholders = candidates.map(() => "?").join(", ");
+        const sql = `select fileName, content from readable where fileName in (${placeholders})`;
+        const rows = await executeLangQuery(lang, sql, candidates);
+        if (rows.length === 0) {
+            return [];
+        }
+
+        const priority = new Map(candidates.map((name, index) => [name, index]));
+        const bestMatch = rows
+            .slice()
+            .sort((a, b) => (priority.get(a.fileName) ?? Number.MAX_SAFE_INTEGER) - (priority.get(b.fileName) ?? Number.MAX_SAFE_INTEGER))[0];
+        return [{ content: bestMatch.content, lang }];
     });
     const grouped = await Promise.all(tasks);
     return grouped.flat();
@@ -386,9 +427,18 @@ export const selectSubtitleTranslations = async (fileName, startTime, langs = []
     const minTime = startTime - 0.5;
     const maxTime = startTime + 0.5;
     const tasks = langs.map(async (lang) => {
-        const sql = "select content from subtitle where fileName=? and startTime between ? and ?";
-        const rows = await executeLangQuery(lang, sql, [fileName, minTime, maxTime]);
-        return rows.map((row) => ({ content: row.content, lang }));
+        const candidates = buildLocalizedFileNameCandidates(fileName, lang);
+        const placeholders = candidates.map(() => "?").join(", ");
+        const sql = `select fileName, content from subtitle where fileName in (${placeholders}) and startTime between ? and ?`;
+        const rows = await executeLangQuery(lang, sql, [...candidates, minTime, maxTime]);
+        if (rows.length === 0) {
+            return [];
+        }
+        const priority = new Map(candidates.map((name, index) => [name, index]));
+        const bestMatch = rows
+            .slice()
+            .sort((a, b) => (priority.get(a.fileName) ?? Number.MAX_SAFE_INTEGER) - (priority.get(b.fileName) ?? Number.MAX_SAFE_INTEGER))[0];
+        return [{ content: bestMatch.content, lang }];
     });
     const grouped = await Promise.all(tasks);
     return grouped.flat();
@@ -412,9 +462,19 @@ export const selectSubtitleTranslationsBySubtitleId = async (subtitleId, startTi
 export const selectSubtitleContext = async (fileName, langs = []) => {
     if (!langs || langs.length === 0) return [];
     const tasks = langs.map(async (lang) => {
-        const sql = "select content, startTime, endTime from subtitle where fileName=? order by startTime";
-        const rows = await executeLangQuery(lang, sql, [fileName]);
-        return rows.map((row) => ({
+        const candidates = buildLocalizedFileNameCandidates(fileName, lang);
+        const placeholders = candidates.map(() => "?").join(", ");
+        const sql = `select fileName, content, startTime, endTime from subtitle where fileName in (${placeholders}) order by startTime`;
+        const rows = await executeLangQuery(lang, sql, candidates);
+        if (rows.length === 0) {
+            return [];
+        }
+        const priority = new Map(candidates.map((name, index) => [name, index]));
+        const bestFileName = rows
+            .slice()
+            .sort((a, b) => (priority.get(a.fileName) ?? Number.MAX_SAFE_INTEGER) - (priority.get(b.fileName) ?? Number.MAX_SAFE_INTEGER))[0]
+            .fileName;
+        return rows.filter((row) => row.fileName === bestFileName).map((row) => ({
             content: row.content,
             lang,
             startTime: row.startTime,

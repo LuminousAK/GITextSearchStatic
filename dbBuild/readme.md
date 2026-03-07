@@ -12,6 +12,7 @@
 - 搜索时只加载用户选择的单语言库（更小、更快）
 - 展示多语言结果时按 `hash` 去对应语言库查同 hash 文本
 - 追溯来源时在 `meta.db` 查询 `hashSource`
+- 构建结束后会自动生成 `db-manifest.json`，并将超过 `100MB` 的 `.db` 拆分到 `chunks/`
 
 ## 前置准备
 1. 在 `DBConfig.py` 设置 `DATA_PATH` 为 AnimeGameData 根目录。
@@ -34,6 +35,11 @@ python DBInit.py
 ```bash
 python DBBuild.py
 ```
+
+构建完成后：
+- 小于等于 `100MB` 的数据库保留原 `.db`
+- 大于 `100MB` 的数据库会被切片为 `chunks/{dbName}.part.00...`，并删除原 `.db`
+- 统一访问配置写入 `../db/db-manifest.json`
 
 ## 仅重建某个语言库
 

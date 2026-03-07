@@ -7,6 +7,20 @@ from tqdm import main, tqdm
 from DBConfig import DATA_PATH, LANG_MAP, SUBTITLE_PATH, connect, lang_db_path
 from ftsNormalizer import normalize_for_fts
 
+LOCALIZATION_PATH_KEYS = [
+    "dePath", "enPath", "esPath", "frPath", "idPath", "itPath",
+    "jpPath", "krPath", "ptPath", "ruPath", "tcPath", "thPath",
+    "trPath", "viPath",
+]
+
+# Obfuscated field names seen in some data package versions.
+LOCALIZATION_PATH_KEYS_OBFUSCATED = [
+    # "EDPAFDDJJNM", "FNIFOPDJMMG",  # 6.3
+    "GDDDAAPHELI", "KMGOJMCBKDK",  # 6.4
+]
+
+ALL_LOCALIZATION_PATH_KEYS = LOCALIZATION_PATH_KEYS + LOCALIZATION_PATH_KEYS_OBFUSCATED
+
 
 def load_localization_config():
     """
@@ -27,13 +41,6 @@ def load_localization_config():
      # Map filename to info
     filename_to_info = {}
 
-    # Keys that might contain paths
-    path_keys = [
-        "dePath", "enPath", "esPath", "frPath", "idPath", "itPath",
-        "jpPath", "krPath", "ptPath", "ruPath", "tcPath", "thPath",
-        "trPath", "viPath", "EDPAFDDJJNM", "FNIFOPDJMMG",
-    ]
-
     for entry in data:
         # Only care about LOC_SUBTITLE
         if entry.get("assetType") != "LOC_SUBTITLE":
@@ -41,7 +48,7 @@ def load_localization_config():
 
         subtitle_id = entry.get("id")
 
-        for key in path_keys:
+        for key in ALL_LOCALIZATION_PATH_KEYS:
             path = entry.get(key)
             if isinstance(path, str):
                 # Extract filename from path

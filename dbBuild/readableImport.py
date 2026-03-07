@@ -6,6 +6,20 @@ from tqdm import tqdm
 from DBConfig import DATA_PATH, LANG_MAP, READABLE_PATH, connect, lang_db_path
 from ftsNormalizer import normalize_for_fts
 
+LOCALIZATION_PATH_KEYS = [
+    "dePath", "enPath", "esPath", "frPath", "idPath", "itPath",
+    "jpPath", "krPath", "ptPath", "ruPath", "tcPath", "thPath",
+    "trPath", "viPath",
+]
+
+# Obfuscated field names seen in some data package versions.
+LOCALIZATION_PATH_KEYS_OBFUSCATED = [
+    # "EDPAFDDJJNM", "FNIFOPDJMMG",  # 6.3
+    "GDDDAAPHELI", "KMGOJMCBKDK",  # 6.4
+]
+
+ALL_LOCALIZATION_PATH_KEYS = LOCALIZATION_PATH_KEYS + LOCALIZATION_PATH_KEYS_OBFUSCATED
+
 
 def load_document_config():
     """
@@ -53,13 +67,6 @@ def load_localization_config(loc_id_to_title_hash):
     # Map filename to info
     filename_to_info = {}
 
-    # Keys that might contain paths
-    path_keys = [
-        "dePath", "enPath", "esPath", "frPath", "idPath", "itPath",
-        "jpPath", "krPath", "ptPath", "ruPath", "tcPath", "thPath",
-        "trPath", "viPath", "EDPAFDDJJNM", "FNIFOPDJMMG",
-    ]
-
     for entry in data:
         loc_id = entry.get("id")
         if loc_id not in loc_id_to_title_hash:
@@ -67,7 +74,7 @@ def load_localization_config(loc_id_to_title_hash):
 
         title_hash = loc_id_to_title_hash[loc_id]
 
-        for key in path_keys:
+        for key in ALL_LOCALIZATION_PATH_KEYS:
             path = entry.get(key)
             if isinstance(path, str) and "Readable" in path:
                 # Extract filename from path

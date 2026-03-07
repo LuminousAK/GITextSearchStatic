@@ -3,6 +3,7 @@ import { createDbWorker } from "sql.js-httpvfs";
 
 const workerUrl = "/db/sqlite.worker.js";
 const wasmUrl = "/db/sql-wasm.wasm";
+const manifestUrl = "/db/db-manifest.json";
 
 const LANG_ID_TO_CODE = {
     1: "chs",
@@ -22,15 +23,11 @@ const LANG_ID_TO_CODE = {
     15: "vi",
 };
 
-const createWorker = (url) => createDbWorker(
+const createWorker = (config) => createDbWorker(
     [
         {
             from: "inline",
-            config: {
-                serverMode: "full",
-                url,
-                requestChunkSize: 4096,
-            },
+            config,
         },
     ],
     workerUrl,
@@ -39,12 +36,44 @@ const createWorker = (url) => createDbWorker(
 
 let metaWorkerPromise = null;
 const langWorkerPromises = new Map();
+let manifestPromise = null;
+
+const loadManifest = async () => {
+    const response = await fetch(manifestUrl, { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error(`Failed to load DB manifest (${manifestUrl}): HTTP ${response.status}`);
+    }
+
+    const manifest = await response.json();
+    if (!manifest || typeof manifest !== "object" || !manifest.databases || typeof manifest.databases !== "object") {
+        throw new Error(`Invalid DB manifest format from ${manifestUrl}`);
+    }
+    return manifest;
+};
+
+const getManifest = () => {
+    if (!manifestPromise) {
+        manifestPromise = loadManifest();
+    }
+    return manifestPromise;
+};
+
+const getDbConfigOrThrow = (manifest, dbKey) => {
+    const config = manifest.databases[dbKey];
+    if (!config) {
+        throw new Error(`Database "${dbKey}" is missing in ${manifestUrl}`);
+    }
+    return config;
+};
 
 export const getLangCodeById = (langId) => LANG_ID_TO_CODE[Number(langId)] || null;
 
 export const getMetaWorker = () => {
     if (!metaWorkerPromise) {
-        metaWorkerPromise = createWorker("/db/meta.db");
+        metaWorkerPromise = getManifest().then((manifest) => {
+            const config = getDbConfigOrThrow(manifest, "meta");
+            return createWorker(config);
+        });
     }
     return metaWorkerPromise;
 };
@@ -56,7 +85,12 @@ export const getLangWorker = (langId) => {
         throw new Error(`Unsupported language id: ${langId}`);
     }
     if (!langWorkerPromises.has(normalizedLangId)) {
-        langWorkerPromises.set(normalizedLangId, createWorker(`/db/lang_${langCode}.db`));
+        const dbKey = `lang_${langCode}`;
+        const workerPromise = getManifest().then((manifest) => {
+            const config = getDbConfigOrThrow(manifest, dbKey);
+            return createWorker(config);
+        });
+        langWorkerPromises.set(normalizedLangId, workerPromise);
     }
     return langWorkerPromises.get(normalizedLangId);
 };

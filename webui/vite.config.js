@@ -11,12 +11,17 @@ const dbProxyPlugin = () => {
   const handleRequest = (req, res, next) => {
     const reqUrl = req.url || ''
     const normalizedPath = reqUrl.split('?')[0]
-    if (!normalizedPath.endsWith('.db')) {
+    if (!normalizedPath || normalizedPath === '/') {
       next()
       return
     }
 
-    const relativePath = normalizedPath.replace(/^\/+(?:db\/+)?/, '')
+    const relativePath = normalizedPath.replace(/^\/+/, '')
+    if (!relativePath) {
+      next()
+      return
+    }
+
     const targetPath = path.resolve(repoRootDbDir, relativePath)
     if (!targetPath.startsWith(path.resolve(repoRootDbDir))) {
       res.statusCode = 400
@@ -29,6 +34,11 @@ const dbProxyPlugin = () => {
     }
 
     const stat = fs.statSync(targetPath)
+    if (!stat.isFile()) {
+      next()
+      return
+    }
+
     const fileSize = stat.size
     const range = req.headers.range
 

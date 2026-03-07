@@ -8,6 +8,69 @@ import readableImport
 import subtitleImport
 import textMapImport
 from DBConfig import DATA_PATH, connect, meta_db_path
+from dbPublish import build_db_manifest
+
+TALK_KEYSETS = [
+    {
+        "detect": "talkId",
+        "mapping": {
+            "talk_id": "talkId",
+            "dialogue_list": "dialogList",
+            "dialogue_id": "id",
+            "role": "talkRole",
+            "role_type": "type",
+            "role_id": "_id",
+            "text_hash": "talkContentTextMapHash",
+        },
+    },
+    # 6.4
+    {
+        # Obfuscated field names seen in some data package versions.
+        "detect": "LBPGKDMGFBN",
+        "mapping": {
+            "talk_id": "LBPGKDMGFBN",
+            "dialogue_list": "LOJEOMAPIIM",
+            "dialogue_id": "BLKKAMEMBBJ",
+            "role": "HJIPOJOECIF",
+            "role_type": "_type",
+            "role_id": "_id",
+            "text_hash": "CMKPOJOEHHA",
+        },
+    },
+]
+
+QUEST_KEYSETS = [
+    {
+        "detect": "id",
+        "mapping": {
+            "quest_id": "id",
+            "title_hash": "titleTextMapHash",
+            "chapter_id": "chapterId",
+            "talks": "talks",
+            "talk_id": "id",
+        },
+    },
+    # 6.4
+    {
+        # Obfuscated field names seen in some data package versions.
+        "detect": "BLKKAMEMBBJ",
+        "mapping": {
+            "quest_id": "BLKKAMEMBBJ",
+            "title_hash": "DMLOMLNJCNA",
+            "chapter_id": "KDKGIPFDENG",
+            "talks": "DGJMIPFDEOF",
+            "talk_id": "BLKKAMEMBBJ",
+        },
+    },
+]
+
+
+def resolve_keys(obj, keysets):
+    for keyset in keysets:
+        if keyset["detect"] in obj:
+            return keyset["mapping"]
+    return None
+
 
 def _meta_conn():
     return connect(meta_db_path())
@@ -35,27 +98,8 @@ def import_talk(meta_conn):
             file_path = os.path.join(folder_path, file_name)
             obj = json.load(open(file_path, encoding="utf-8"))
 
-            if "talkId" in obj:
-                keys = {
-                    "talk_id": "talkId",
-                    "dialogue_list": "dialogList",
-                    "dialogue_id": "id",
-                    "role": "talkRole",
-                    "role_type": "type",
-                    "role_id": "_id",
-                    "text_hash": "talkContentTextMapHash",
-                }
-            elif "LBPGKDMGFBN" in obj:
-                keys = {
-                    "talk_id": "LBPGKDMGFBN",
-                    "dialogue_list": "LOJEOMAPIIM",
-                    "dialogue_id": "BLKKAMEMBBJ",
-                    "role": "HJIPOJOECIF",
-                    "role_type": "_type",
-                    "role_id": "_id",
-                    "text_hash": "CMKPOJOEHHA"
-                }
-            else:
+            keys = resolve_keys(obj, TALK_KEYSETS)
+            if keys is None:
                 print(f"Skipping {folder}\\{file_name}")
                 continue
 
@@ -145,23 +189,8 @@ def import_quest(meta_conn):
     for file_name in tqdm(files):
         obj = json.load(open(os.path.join(quest_root, file_name), encoding="utf-8"))
 
-        if "id" in obj:
-            keys = {
-                "quest_id": "id",
-                "title_hash": "titleTextMapHash",
-                "chapter_id": "chapterId",
-                "talks": "talks",
-                "talk_id": "id",
-            }
-        elif "BLKKAMEMBBJ" in obj:
-            keys = {
-                "quest_id": "BLKKAMEMBBJ",
-                "title_hash": "DMLOMLNJCNA",
-                "chapter_id": "KDKGIPFDENG",
-                "talks": "DGJMIPFDEOF",
-                "talk_id": "BLKKAMEMBBJ"
-            }
-        else:
+        keys = resolve_keys(obj, QUEST_KEYSETS)
+        if keys is None:
             print(f"Skipping {file_name}")
             continue
 
@@ -282,6 +311,9 @@ def main():
     meta_conn.commit()
     cur.close()
     meta_conn.close()
+
+    print("Publishing DB artifacts (chunk + manifest)...")
+    build_db_manifest()
 
     print("Done!")
 

@@ -4,9 +4,12 @@ This directory contains the `sql.js-httpvfs` implementation for querying the SQL
 
 ## Setup
 
-1.  **Database File**: Place your SQLite database file named `data.db` in `public/db/`.
-    - Path: `public/db/data.db`
-    - This file should contain the tables: `textMap`, `dialogue`, `quest`, `fetters`, `readable`, `subtitle`, etc.
+1.  **Database Artifacts**: Build databases into repo-root `db/` (not `webui/public/db`).
+    - Required files:
+      - `db/db-manifest.json`
+      - `db/meta.db` or its chunk files (for oversized DB)
+      - `db/lang_*.db` or chunk files (for oversized DB)
+    - Oversized DBs are chunked as `db/chunks/{dbName}.part.00...`
 
 2.  **Worker Files**: The `sqlite.worker.js` and `sql-wasm.wasm` files should already be in `public/db/`.
     - If missing, copy them from `node_modules/sql.js-httpvfs/dist/`.
