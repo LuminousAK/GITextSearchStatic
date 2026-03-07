@@ -162,3 +162,6 @@ ENV/
 *.swo
 .DS_Store
 Thumbs.db
+
+# DB files
+db/
